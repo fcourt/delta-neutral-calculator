@@ -4,60 +4,107 @@ export async function GET() {
   try {
     console.log('[Extended API] Starting fetch...');
     
-    // URL correcte avec le paramètre market
-    const url = 'https://api.starknet.extended.exchange/api/v1/info/markets?market=BTC-USD';
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
-        'Accept': 'application/json'
+    // Essayons plusieurs approches
+    const approaches = [
+      {
+        name: 'Direct fetch',
+        execute: async () => {
+          const url = 'https://api.starknet.extended.exchange/api/v1/info/markets?market=BTC-USD';
+          return await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Accept': 'application/json'
+            },
+            cache: 'no-store'
+          });
+        }
       },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10000)
-    });
+      {
+        name: 'Stats endpoint',
+        execute: async () => {
+          const url = 'https://api.starknet.extended.exchange/api/v1/info/markets/BTC-USD/stats';
+          return await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Accept': 'application/json'
+            },
+            cache: 'no-store'
+          });
+        }
+      },
+      {
+        name: 'Simple fetch',
+        execute: async () => {
+          return await fetch('https://api.starknet.extended.exchange/api/v1/info/markets?market=BTC-USD');
+        }
+      }
+    ];
 
-    console.log('[Extended API] Response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Extended API returned ${response.status}: ${errorText}`);
+    let lastError = null;
+    
+    for (const approach of approaches) {
+      try {
+        console.log(`[Extended API] Trying: ${approach.name}`);
+        const response = await approach.execute();
+        
+        console.log(`[Extended API] ${approach.name} - Status:`, response.status);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[Extended API] ${approach.name} - Success`);
+          
+          // Adapter selon la structure de réponse
+          let stats;
+          
+          if (data.status === 'ok' || data.status === 'OK') {
+            if (Array.isArray(data.data) && data.data.length > 0) {
+              // Format: /markets endpoint
+              stats = data.data[0].marketStats;
+            } else if (data.data && typeof data.data === 'object') {
+              // Format: /stats endpoint
+              stats = data.data;
+            }
+          }
+          
+          if (stats && stats.bidPrice && stats.askPrice) {
+            return NextResponse.json({
+              success: true,
+              platform: 'Extended Exchange',
+              market: 'BTC-USD',
+              method: approach.name,
+              data: {
+                bid: parseFloat(stats.bidPrice),
+                ask: parseFloat(stats.askPrice),
+                mid: (parseFloat(stats.bidPrice) + parseFloat(stats.askPrice)) / 2,
+                last: parseFloat(stats.lastPrice),
+                mark: parseFloat(stats.markPrice || stats.bidPrice),
+                index: parseFloat(stats.indexPrice || stats.bidPrice),
+                volume24h: parseFloat(stats.dailyVolume || 0),
+                change24h: parseFloat(stats.dailyPriceChangePercentage || 0)
+              },
+              timestamp: Date.now()
+            });
+          }
+        }
+        
+        lastError = `${approach.name}: HTTP ${response.status}`;
+      } catch (error) {
+        console.error(`[Extended API] ${approach.name} failed:`, error.message);
+        lastError = `${approach.name}: ${error.message}`;
+      }
     }
-
-    const data = await response.json();
-    console.log('[Extended API] Data received:', JSON.stringify(data).substring(0, 500));
-
-    if (data.status === 'ok' && data.data && Array.isArray(data.data) && data.data.length > 0) {
-      const marketData = data.data[0];
-      const stats = marketData.marketStats;
-      
-      return NextResponse.json({
-        success: true,
-        platform: 'Extended Exchange',
-        market: 'BTC-USD',
-        data: {
-          bid: parseFloat(stats.bidPrice),
-          ask: parseFloat(stats.askPrice),
-          mid: (parseFloat(stats.bidPrice) + parseFloat(stats.askPrice)) / 2,
-          last: parseFloat(stats.lastPrice),
-          mark: parseFloat(stats.markPrice),
-          index: parseFloat(stats.indexPrice),
-          volume24h: parseFloat(stats.dailyVolume),
-          change24h: parseFloat(stats.dailyPriceChangePercentage)
-        },
-        timestamp: Date.now()
-      });
-    } else {
-      throw new Error(`Invalid data structure: ${JSON.stringify(data).substring(0, 500)}`);
-    }
+    
+    throw new Error(`All approaches failed. Last error: ${lastError}`);
+    
   } catch (error) {
-    console.error('[Extended API] Error:', error);
+    console.error('[Extended API] All attempts failed:', error);
     return NextResponse.json({
       success: false,
       platform: 'Extended Exchange',
       error: error.message,
-      details: error.stack?.substring(0, 500),
+      hint: 'Extended API may be blocking requests from Vercel. Try entering prices manually.',
       timestamp: Date.now()
-    }, { status: 500 });
+    }, { status: 503 });
   }
 }
 
