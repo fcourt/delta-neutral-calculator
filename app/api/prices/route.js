@@ -1,16 +1,6 @@
-// API Route pour récupérer les deux prix en une seule requête
-export default async function handler(req, res) {
-  // Configuration CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+import { NextResponse } from 'next/server';
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
+export async function GET() {
   const results = {
     extended: null,
     omni: null,
@@ -19,33 +9,46 @@ export default async function handler(req, res) {
 
   // Récupérer Extended Exchange
   try {
-    const extendedResponse = await fetch('https://api.starknet.extended.exchange/api/v1/info/markets/BTC-USD', {
+    // URL correcte avec le paramètre market
+    const url = 'https://api.starknet.extended.exchange/api/v1/info/markets?market=BTC-USD';
+    
+    const extendedResponse = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
         'Accept': 'application/json'
-      }
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000)
     });
 
-    if (extendedResponse.ok) {
-      const data = await extendedResponse.json();
-      if (data.status === 'ok' && data.data && data.data[0]) {
-        const stats = data.data[0].marketStats;
-        results.extended = {
-          success: true,
-          bid: parseFloat(stats.bidPrice),
-          ask: parseFloat(stats.askPrice),
-          mid: (parseFloat(stats.bidPrice) + parseFloat(stats.askPrice)) / 2,
-          last: parseFloat(stats.lastPrice),
-          mark: parseFloat(stats.markPrice),
-          volume24h: parseFloat(stats.dailyVolume),
-          change24h: parseFloat(stats.dailyPriceChangePercentage)
-        };
-      }
+    if (!extendedResponse.ok) {
+      throw new Error(`Extended API returned status ${extendedResponse.status}`);
+    }
+
+    const data = await extendedResponse.json();
+    
+    if (data.status === 'ok' && data.data && Array.isArray(data.data) && data.data.length > 0) {
+      const marketData = data.data[0];
+      const stats = marketData.marketStats;
+      results.extended = {
+        success: true,
+        bid: parseFloat(stats.bidPrice),
+        ask: parseFloat(stats.askPrice),
+        mid: (parseFloat(stats.bidPrice) + parseFloat(stats.askPrice)) / 2,
+        last: parseFloat(stats.lastPrice),
+        mark: parseFloat(stats.markPrice),
+        volume24h: parseFloat(stats.dailyVolume),
+        change24h: parseFloat(stats.dailyPriceChangePercentage)
+      };
+    } else {
+      throw new Error(`Invalid data structure: ${JSON.stringify(data).substring(0, 200)}`);
     }
   } catch (error) {
+    console.error('Extended error:', error);
     results.extended = {
       success: false,
-      error: error.message
+      error: error.message,
+      details: 'Check Vercel logs for more information'
     };
   }
 
@@ -63,7 +66,8 @@ export default async function handler(req, res) {
           'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
           'Accept': 'application/json'
         },
-        timeout: 5000
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000)
       });
 
       if (omniResponse.ok) {
@@ -102,7 +106,7 @@ export default async function handler(req, res) {
         }
       }
     } catch (error) {
-      // Continue avec le prochain endpoint
+      console.error(`Omni endpoint ${endpoint} error:`, error.message);
     }
   }
 
@@ -121,5 +125,9 @@ export default async function handler(req, res) {
     };
   }
 
-  res.status(200).json(results);
+  return NextResponse.json(results);
 }
+
+// Configuration pour forcer le comportement dynamique
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
