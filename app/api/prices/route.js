@@ -1,6 +1,16 @@
-import { NextResponse } from 'next/server';
+// API Route pour récupérer les deux prix en une seule requête
+export default async function handler(req, res) {
+  // Configuration CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-export async function GET() {
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   const results = {
     extended: null,
     omni: null,
@@ -13,8 +23,7 @@ export async function GET() {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
         'Accept': 'application/json'
-      },
-      cache: 'no-store'
+      }
     });
 
     if (extendedResponse.ok) {
@@ -34,7 +43,6 @@ export async function GET() {
       }
     }
   } catch (error) {
-    console.error('Extended error:', error);
     results.extended = {
       success: false,
       error: error.message
@@ -55,8 +63,7 @@ export async function GET() {
           'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
           'Accept': 'application/json'
         },
-        cache: 'no-store',
-        signal: AbortSignal.timeout(5000)
+        timeout: 5000
       });
 
       if (omniResponse.ok) {
@@ -95,7 +102,7 @@ export async function GET() {
         }
       }
     } catch (error) {
-      console.error(`Omni endpoint ${endpoint} error:`, error.message);
+      // Continue avec le prochain endpoint
     }
   }
 
@@ -114,9 +121,5 @@ export async function GET() {
     };
   }
 
-  return NextResponse.json(results);
+  res.status(200).json(results);
 }
-
-// Configuration pour forcer le comportement dynamique
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
