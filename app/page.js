@@ -38,12 +38,20 @@ export default function DeltaNeutralCalculator() {
     try {
       // Utilise l'API backend pour contourner CORS
       const response = await fetch('/api/prices');
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+      
       const data = await response.json();
+      
+      console.log('Prices API response:', data);
       
       if (data.extended?.success) {
         setPriceShort(data.extended.ask.toFixed(2));
         setFetchStatus(prev => ({ ...prev, extended: 'success' }));
       } else {
+        console.error('Extended failed:', data.extended?.error);
         setFetchStatus(prev => ({ ...prev, extended: 'error' }));
       }
       
@@ -51,6 +59,7 @@ export default function DeltaNeutralCalculator() {
         setPriceLong(data.omni.bid.toFixed(2));
         setFetchStatus(prev => ({ ...prev, omni: 'success' }));
       } else {
+        console.error('Omni failed:', data.omni?.error);
         setFetchStatus(prev => ({ ...prev, omni: 'error' }));
       }
       
@@ -58,6 +67,7 @@ export default function DeltaNeutralCalculator() {
     } catch (error) {
       console.error('Error fetching prices:', error);
       setFetchStatus({ extended: 'error', omni: 'error' });
+      alert('❌ Impossible de récupérer les prix automatiquement.\n\nVeuillez entrer les prix manuellement depuis:\n- Extended: https://app.extended.exchange/perp/BTC-USD\n- Omni: https://omni.variational.io/perpetual/BTC');
     } finally {
       setIsLoading(false);
     }
