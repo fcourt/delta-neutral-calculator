@@ -1,34 +1,36 @@
-// API Route pour récupérer le prix depuis Extended Exchange
-export default async function handler(req, res) {
-  // Configuration CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+import { NextResponse } from 'next/server';
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
+export async function GET() {
   try {
-    const response = await fetch('https://api.starknet.extended.exchange/api/v1/info/markets/BTC-USD', {
+    console.log('[Extended API] Starting fetch...');
+    
+    // URL correcte avec le paramètre market
+    const url = 'https://api.starknet.extended.exchange/api/v1/info/markets?market=BTC-USD';
+    
+    const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; DeltaNeutralCalculator/1.0)',
         'Accept': 'application/json'
-      }
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000)
     });
 
+    console.log('[Extended API] Response status:', response.status);
+
     if (!response.ok) {
-      throw new Error(`Extended API returned ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Extended API returned ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('[Extended API] Data received:', JSON.stringify(data).substring(0, 500));
 
-    if (data.status === 'ok' && data.data && data.data[0]) {
-      const stats = data.data[0].marketStats;
+    if (data.status === 'ok' && data.data && Array.isArray(data.data) && data.data.length > 0) {
+      const marketData = data.data[0];
+      const stats = marketData.marketStats;
       
-      res.status(200).json({
+      return NextResponse.json({
         success: true,
         platform: 'Extended Exchange',
         market: 'BTC-USD',
@@ -45,15 +47,20 @@ export default async function handler(req, res) {
         timestamp: Date.now()
       });
     } else {
-      throw new Error('Invalid data structure from Extended API');
+      throw new Error(`Invalid data structure: ${JSON.stringify(data).substring(0, 500)}`);
     }
   } catch (error) {
-    console.error('Extended API Error:', error);
-    res.status(500).json({
+    console.error('[Extended API] Error:', error);
+    return NextResponse.json({
       success: false,
       platform: 'Extended Exchange',
       error: error.message,
+      details: error.stack?.substring(0, 500),
       timestamp: Date.now()
-    });
+    }, { status: 500 });
   }
 }
+
+// Configuration pour forcer le comportement dynamique
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
